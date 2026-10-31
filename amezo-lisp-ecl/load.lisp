@@ -1,0 +1,18 @@
+;;;; load.lisp - src/ の各ファイルを、必要ならコンパイルしてから読み込む (テストからも使う)
+;;;; ECL の compile-file は C コンパイラ (gcc) と libecl の開発ヘッダを使う。出力は .fas。
+(let* ((root (make-pathname :name nil :type nil :defaults (or *load-truename* *default-pathname-defaults*)))
+       (files '("package" "posix" "util" "crypto" "config" "core" "regen" "post" "dai" "jump" "admin" "archive" "server" "main")))
+  (dolist (name files)
+    (let* ((src (merge-pathnames (format nil "src/~a.lisp" name) root))
+           (fasl (compile-file-pathname src)))
+      (when (or (not (probe-file fasl))
+                (> (file-write-date src) (file-write-date fasl)))
+        (let ((log (make-string-output-stream)) (failed nil))
+          ;; ECL のコンパイラは進捗を標準出力へ出すので溜めておき、失敗したときだけ表示する
+          (let ((*standard-output* log) (*error-output* log))
+            (multiple-value-bind (out warn fail) (compile-file src :output-file fasl :verbose nil :print nil)
+              (declare (ignore warn))
+              (setf failed (or fail (null out)))))
+          (when failed (write-string (get-output-stream-string log) *error-output*))))
+      (load fasl :verbose nil)))
+  (setf (symbol-value (intern "*ROOT-DIR*" :amezo)) root))
